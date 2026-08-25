@@ -106,6 +106,20 @@ jobs:
             }'
           fi
 
+      - name: Check Remote Network State Existence
+        id: check_network_state
+        run: |
+          NETWORK_KEY="network/${ENV}.tfstate"
+          BUCKET_NAME="fiap-repairshop2"
+          
+          if aws s3api head-object --bucket "$BUCKET_NAME" --key "$NETWORK_KEY" 2>/dev/null; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "✅ Estado da rede ($NETWORK_KEY) encontrado no bucket $BUCKET_NAME."
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "⚠️ Estado da rede ($NETWORK_KEY) NÃO encontrado no bucket $BUCKET_NAME."
+          fi
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
@@ -119,13 +133,23 @@ jobs:
             -backend-config="key=rds/${ENV}.tfstate" \
             -backend-config="region=${{ env.AWS_REGION }}"
 
-      - name: Terraform Plan
+      - name: Terraform Validate / Plan
         run: |
           cd infra
-          terraform plan -var-file="environments/${ENV}.tfvars"
+          if [ "${{ steps.check_network_state.outputs.exists }}" = "true" ]; then
+            echo "🔍 Executando terraform plan com environments/${ENV}.tfvars..."
+            terraform plan -var-file="environments/${ENV}.tfvars"
+          else
+            echo "::warning::O estado remoto da rede 'network/${ENV}.tfstate' ainda não existe no S3. Executando 'terraform validate' para validação sintática do PR."
+            terraform validate
+          fi
 
       - name: Terraform Apply (Somente na branch main ou disparo manual)
         if: (github.ref == 'refs/heads/main' && github.event_name == 'push') || github.event_name == 'workflow_dispatch'
         run: |
           cd infra
+          if [ "${{ steps.check_network_state.outputs.exists }}" != "true" ]; then
+            echo "::error::Não é possível executar o deploy do RDS porque o estado remoto da rede 'network/${ENV}.tfstate' não foi encontrado no S3. Execute o deploy do repositório 'infra-network' para '${ENV}' primeiro!"
+            exit 1
+          fi
           terraform apply -auto-approve -var-file="environments/${ENV}.tfvars"
