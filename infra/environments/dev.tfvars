@@ -1,4 +1,5 @@
 aws_region              = "us-east-1"
+environment             = "dev"
 cluster_name            = "repairshop-eks-dev"
 db_name                 = "repairshop"
 db_username             = "repairshop"

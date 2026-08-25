@@ -1,9 +1,10 @@
+# Referência ao estado remoto da Infraestrutura de Rede Base (infra-network)
 data "terraform_remote_state" "network" {
   backend = "s3"
   config = {
-    bucket = "fiap-repairshop2"
-    key    = "network/dev.tfstate"
-    region = "us-east-1"
+    bucket = var.s3_tfstate_bucket
+    key    = var.remote_state_network_key != "" ? var.remote_state_network_key : "network/${var.environment}.tfstate"
+    region = var.aws_region
   }
 }
 
@@ -32,7 +33,7 @@ resource "aws_db_instance" "postgres" {
   db_subnet_group_name   = aws_db_subnet_group.rds_subnet_group.name
   vpc_security_group_ids = [data.terraform_remote_state.network.outputs.sg_rds_id]
 
-  storage_encrypted   = true
+  storage_encrypted       = true
   skip_final_snapshot     = var.skip_final_snapshot
   publicly_accessible     = false
   backup_retention_period = var.backup_retention_period

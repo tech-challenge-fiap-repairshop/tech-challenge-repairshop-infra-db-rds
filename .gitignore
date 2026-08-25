@@ -1,5 +1,8 @@
 # Local .terraform directories
-**/.terraform/*
+.terraform/
+**/.terraform/
+*.terraform.lock.hcl
+.terraform.lock.hcl
 
 # .tfstate files
 *.tfstate
@@ -12,3 +15,8 @@ crash.*.log
 # Ignore override files
 *_override.tf
 *_override.tf.json
+
+# IDEs
+.idea/
+*.iml
+.vscode/
