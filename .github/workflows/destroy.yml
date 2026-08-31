@@ -32,6 +32,7 @@ jobs:
     # Só executa se a confirmação digitada for exatamente "DESTRUIR"
     if: ${{ github.event.inputs.confirm_destroy == 'DESTRUIR' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     environment: ${{ github.event.inputs.environment }}
 
     env:
@@ -68,3 +69,13 @@ jobs:
         run: |
           cd infra
           terraform destroy -auto-approve -var-file="environments/${ENV}.tfvars"
+
+      - name: Generate Destroy Summary
+        if: always()
+        run: |
+          echo "## 💥 AWS DB RDS Destroy Summary" >> $GITHUB_STEP_SUMMARY
+          echo "| Parâmetro | Valor |" >> $GITHUB_STEP_SUMMARY
+          echo "| :--- | :--- |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Ambiente Destruído** | \`${{ env.ENV }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Disparado por** | \`${{ github.actor }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Status da Execução** | \`${{ job.status }}\` |" >> $GITHUB_STEP_SUMMARY
