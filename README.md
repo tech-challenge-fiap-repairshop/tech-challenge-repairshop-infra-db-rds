@@ -89,26 +89,42 @@ erDiagram
 
 ```mermaid
 flowchart TB
+    %% Definições de Estilo
+    classDef cloudStyle fill:#ECEFF1,stroke:#607D8B,stroke-width:2px,color:#263238
+    classDef vpcStyle fill:#F5F7FA,stroke:#0277BD,stroke-width:2px,color:#01579B,stroke-dasharray: 4 4
+    classDef privSubnetStyle fill:#FFF8E1,stroke:#F57F17,stroke-width:2px,color:#BF360C
+    classDef rdsStyle fill:#E8EAF6,stroke:#3949AB,stroke-width:2px,color:#1A237E
+    classDef sgStyle fill:#FFEBEE,stroke:#D32F2F,stroke-width:2px,color:#B71C1C
+    classDef workloadStyle fill:#E1F5FE,stroke:#0288D1,stroke-width:1.5px,color:#01579B
+    classDef tagStyle fill:#FFFFFF,stroke:#78909C,stroke-width:1px,stroke-dasharray: 2 2,color:#37474F
+
     subgraph AWS_Cloud["☁️ AWS Cloud"]
-        subgraph VPC["🏢 VPC Privada (10.x.0.0/16)"]
-            subgraph PrivateSubnets["🔒 Sub-redes Privadas (Multi-AZ)"]
-                DBSubnetGroup["DB Subnet Group (2 AZs)"]
-                RDSInstance["🗄️ Amazon RDS PostgreSQL 16\n(db.t3.micro / db.t3.medium)\n• Storage: gp3 Encrypted\n• Multi-AZ Backup"]
+        subgraph VPC["🏢 VPC Privada — repairshop-vpc (10.x.0.0/16)"]
+            subgraph PrivateSubnets["🔒 Sub-redes Privadas (Multi-AZ: us-east-1a e us-east-1b)"]
+                TagSubnet["🏷️ DB Subnet Group: Subnets Privadas 10.x.2.0/24 e 10.x.3.0/24"]:::tagStyle
+                
+                DBSubnetGroup["📦 AWS DB Subnet Group (2 AZs)"]:::rdsStyle
+                RDSInstance["🗄️ Amazon RDS PostgreSQL 16\n• db.t3.micro / db.t3.medium\n• Storage: gp3 Encrypted (KMS)\n• Automated Backup Enabled"]:::rdsStyle
+                TagSubnet ~~~ DBSubnetGroup
             end
 
-            SG_RDS["🛡️ Security Group: rds-sg\n• Ingress: 5432 (Postgres)\n• Origem: Subnets Privadas (10.x.10.0/24 e 10.x.11.0/24)"]
+            SG_RDS["🛡️ Security Group: rds-sg\n• Ingress: TCP 5432 (PostgreSQL)\n• Origem: CIDR Subnets Privadas\n• Egress: Bloqueado (Isolamento Estrito)"]:::sgStyle
             
-            subgraph Workloads["☸️ Workloads Conectados"]
-                EKSNodes["EKS Worker Nodes\n(repairshop-app)"]
-                LambdaAuth["Lambda Auth\n(repairshop-lambda-auth)"]
+            subgraph Workloads["☸️ Workloads Conectados da VPC"]
+                direction TB
+                EKSNodes["☸️ EKS Worker Nodes\n(Pods Spring Boot / repairshop-app)"]:::workloadStyle
+                LambdaAuth["⚡ Lambda Auth\n(repairshop-lambda-auth)"]:::workloadStyle
             end
         end
     end
+    class AWS_Cloud cloudStyle
+    class VPC vpcStyle
+    class PrivateSubnets privSubnetStyle
 
     DBSubnetGroup --> RDSInstance
     RDSInstance --- SG_RDS
-    EKSNodes ==>|"TCP:5432 (JDBC / JPA)"| SG_RDS
-    LambdaAuth -.->|"TCP:5432 (Auth Verification)"| SG_RDS
+    EKSNodes ==>|"TCP:5432 (Pool HikariCP / JPA)"| SG_RDS
+    LambdaAuth -.->|"TCP:5432 (Auth Query Verification)"| SG_RDS
 ```
 
 ---
@@ -144,16 +160,25 @@ O provisionamento automatizado do banco de dados é executado pelo workflow [`.g
 
 ```mermaid
 flowchart TD
-    A["🎯 Trigger (Push/PR branches: main, homolog, dev ou Workflow Dispatch)"] --> B["⚙️ Setup & Auth AWS (Configure AWS Credentials)"]
-    B --> C["📦 S3 State Check (Ensure Bucket fiap-repairshop2)"]
-    C --> D["🌐 Check Remote Network State (network/${ENV}.tfstate)"]
-    D --> E["🔍 Terraform Format Check (terraform fmt -check)"]
-    E --> F["⚡ Terraform Init (S3 Backend: rds/${ENV}.tfstate)"]
-    F --> G["📝 Terraform Plan / Validate (Injeção de DB_USER e DB_PASS dos Secrets)"]
-    G --> H{"🌿 Branch é main ou Dispatch Manual?"}
-    H -- "Sim" --> I["🚀 Terraform Apply (-auto-approve)"]
-    H -- "Não (PR / Homolog)" --> J["✅ Relatório Sintático / Plan"]
-    I --> K["📊 GitHub Step Summary (Métricas da Execução)"]
+    classDef triggerStyle fill:#E1F5FE,stroke:#0288D1,stroke-width:2px,color:#01579B
+    classDef stepStyle fill:#F3E5F5,stroke:#7B1FA2,stroke-width:2px,color:#4A148C
+    classDef gateStyle fill:#FFF9C4,stroke:#FBC02D,stroke-width:2px,color:#F57F17
+    classDef deployStyle fill:#E8F5E9,stroke:#388E3C,stroke-width:2px,color:#1B5E20
+    classDef reportStyle fill:#ECEFF1,stroke:#455A64,stroke-width:2px,color:#263238
+
+    A["🎯 Disparo / Trigger\n• Push ou PR (main, homolog, dev)\n• Workflow Dispatch Manual"]:::triggerStyle
+    A --> B["⚙️ Autenticação AWS\n(Configure AWS Credentials / IAM LabRole)"]:::stepStyle
+    B --> C["📦 Garantia do Bucket S3\n(Verifica/Cria fiap-repairshop2)"]:::stepStyle
+    C --> D["🌐 Validação do Estado da Rede\n(Remote State: network/${ENV}.tfstate)"]:::stepStyle
+    D --> E["🔍 Checagem de Formatação\n(terraform fmt -check na pasta infra/)"]:::stepStyle
+    E --> F["⚡ Inicialização do Terraform\n(terraform init com backend S3 rds/${ENV}.tfstate)"]:::stepStyle
+    F --> G["📝 Geração do Plano\n(terraform plan com Secrets DB_USER e DB_PASS)"]:::stepStyle
+    G --> H{"🌿 Branch é 'main' com Push\nou Dispatch Manual?"}:::gateStyle
+    
+    H -- "✅ Sim (Deploy Aprovado)" --> I["🚀 Terraform Apply\n(terraform apply -auto-approve)"]:::deployStyle
+    H -- "🛡️ Não (PR ou Homologação)" --> J["📋 Modo Dry-Run / Plan Only\n(Validação Sintática e Recursos)"]:::reportStyle
+    
+    I --> K["📊 GitHub Step Summary\n(Métricas e Endpoint do Banco)"]:::reportStyle
     J --> K
 ```
 
@@ -180,6 +205,33 @@ flowchart TD
 > 1. **Economia Crítica de Minutos e Custo de Execução no GitHub Actions:** A criação de uma instância RDS PostgreSQL leva em média de 6 a 12 minutos na AWS. A divisão em múltiplos jobs geraria tempo ocioso em filas de provisionamento de novos runners e cobrança duplicada de minutos.
 > 2. **Persistência de Secrets Sensíveis em Memória do Processo:** As variáveis de credenciais do banco (`TF_VAR_db_username` e `TF_VAR_db_password`) são injetadas em variáveis de ambiente voláteis do mesmo runner, sem necessidade de salvá-las em artefatos em disco entre jobs.
 > 3. **Eliminação de Overhead de I/O:** O cache dos plugins do provedor AWS e os arquivos de lock são reaproveitados imediatamente entre os steps de `init`, `plan` e `apply`.
+
+---
+
+## 🔀 Governança de Branches e Ciclo de Promoção (Git Flow)
+
+A governança do repositório segue isolamento estrito com aprovação controlada para promoção de ambientes:
+
+```mermaid
+flowchart LR
+    classDef branchDev fill:#E3F2FD,stroke:#1E88E5,stroke-width:2px,color:#0D47A1
+    classDef branchHml fill:#FFF3E0,stroke:#FB8C00,stroke-width:2px,color:#E65100
+    classDef branchMain fill:#E8F5E9,stroke:#43A047,stroke-width:2px,color:#1B5E20
+    classDef gateStyle fill:#FFEBEE,stroke:#E53935,stroke-width:2px,color:#B71C1C
+
+    Dev["🌿 Feature / Fix / Chore\n(feat/*, fix/*, chore/*)"]:::branchDev
+    PR_HML{"Pull Request\npara homolog"}:::gateStyle
+    HML["🛡️ Branch homolog\n(Ambiente hml / Validação)"]:::branchHml
+    PR_MAIN{"Pull Request\npara main"}:::gateStyle
+    Main["🚀 Branch main\n(Deploy em Produção)"]:::branchMain
+
+    Dev -->|"Abertura de PR"| PR_HML
+    PR_HML -->|"Validação & Merge"| HML
+    HML -->|"Abertura de PR de Promoção"| PR_MAIN
+    PR_MAIN -->|"Aprovação Manual Obrigatória"| Main
+```
+
+> ⚠️ **Regra de Governança:** É expressamente proibido commit ou push direto na branch `main`. Toda alteração deve passar pelo pipeline de validação e aprovação formal.
 
 ---
 
