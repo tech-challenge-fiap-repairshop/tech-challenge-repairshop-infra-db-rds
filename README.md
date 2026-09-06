@@ -83,6 +83,29 @@ erDiagram
 3. **Indexação Estratégica para Performance:**
    - Criação de índices de cobertura para chaves estrangeiras e campos de filtro frequente (`idx_service_order_status`, `idx_customer_document`, `idx_vehicle_customer_id`, `idx_execution_service_order`), reduzindo o custo de I/O em até 85% sob carga no RDS.
 
+<div align="center">
+  <img src="docs/database-er-diagram.png" alt="Diagrama de Entidade e Relacionamento (ERD)" width="850">
+  <br>
+  <em><small><strong>Figura: Diagrama de Entidade e Relacionamento do Banco PostgreSQL (ERD)</strong></small></em>
+  <br><br>
+</div>
+
+---
+
+### 4. Justificativa da Escolha do Flyway para Migrations e Schema DDL
+
+Uma decisão arquitetural de alto padrão adotada no projeto é a **estrita Separação de Responsabilidades (Separation of Concerns — SoC)** entre a Infraestrutura e o Esquema de Dados:
+
+| Responsabilidade | Ferramenta Responsável | Repositório | Justificativa Arquitetural |
+| :--- | :---: | :--- | :--- |
+| **Infraestrutura Física Gerenciada** | **Terraform (IaC)** | `tech-challenge-repairshop-infra-db-rds` (Este repo) | Provisiona a instância AWS RDS, storage SSD gp3, DB Subnet Groups, Security Groups e backups automáticos. Não gerencia DDL/tabelas para evitar acoplamento do estado Terraform com os dados e eliminar o risco crítico de `DROP TABLE` acidental durante updates de infraestrutura. |
+| **Evolução de Esquema e Dados (DDL/DML)** | **Flyway Migration** | `tech-challenge-repairshop-app` | A aplicação Kotlin/Spring Boot executa as migrações SQL versionadas (`V1__init.sql`, `V2__seed.sql`, `V3__add_cpf.sql`) automaticamente na inicialização no EKS. |
+
+#### Vantagens Técnicas da Escolha do Flyway:
+1. **Sincronia Estrita com o Ciclo de Vida da Aplicação:** O modelo de tabelas reflete diretamente as entidades e Value Objects do código de domínio. Ao executar na inicialização dos pods, garante-se que a aplicação nunca opere contra um schema incompatível.
+2. **Rastreabilidade e Imutabilidade com Checksums:** O Flyway mantém a tabela de controle `flyway_schema_history` com checksums SHA-256 de cada script SQL executado, impedindo que scripts alterados a posteriori corrompam a consistência da base.
+3. **Paridade Absoluta entre Ambientes:** Os mesmíssimos scripts de migração rodam de forma idêntica no PostgreSQL do Docker Compose (desenvolvimento local), nos Testcontainers (testes automatizados de integração no CI) e na instância gerenciada AWS RDS (homologação e produção).
+
 ---
 
 ## 🏗️ Topologia da Arquitetura do Banco RDS
