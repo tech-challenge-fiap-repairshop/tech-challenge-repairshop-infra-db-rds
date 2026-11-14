@@ -191,7 +191,7 @@ flowchart TD
 
     A["🎯 Disparo / Trigger\n• Push ou PR (main, homolog, dev)\n• Workflow Dispatch Manual"]:::triggerStyle
     A --> B["⚙️ Autenticação AWS\n(Configure AWS Credentials / IAM LabRole)"]:::stepStyle
-    B --> C["📦 Garantia do Bucket S3\n(Verifica/Cria fiap-repairshop2)"]:::stepStyle
+    B --> C["📦 Garantia do Bucket S3\n(Verifica/Cria fiap-repairshop-{ACCOUNT_ID})"]:::stepStyle
     C --> D["🌐 Validação do Estado da Rede\n(Remote State: network/${ENV}.tfstate)"]:::stepStyle
     D --> E["🔍 Checagem de Formatação\n(terraform fmt -check na pasta infra/)"]:::stepStyle
     E --> F["⚡ Inicialização do Terraform\n(terraform init com backend S3 rds/${ENV}.tfstate)"]:::stepStyle
@@ -211,7 +211,7 @@ flowchart TD
 | :--- | :--- | :--- |
 | **1. Checkout repository** | Baixa o repositório no runner do GitHub Actions. | Assegura que o código Terraform exato do commit seja executado. |
 | **2. Configure AWS Credentials** | Estabelece sessão autenticada via IAM (`LabRole`). | Conecta com a AWS utilizando credenciais seguras injetadas via GitHub Secrets. |
-| **3. Ensure S3 Bucket State** | Valida a existência do bucket central de estados `fiap-repairshop2`. | Previne falha de backend caso o bucket ainda não tenha sido inicializado. |
+| **3. Ensure S3 Bucket State** | Valida a existência do bucket central de estados `fiap-repairshop-{ACCOUNT_ID}`. | Previne falha de backend caso o bucket ainda não tenha sido inicializado. |
 | **4. Check Remote Network State** | Verifica a presença de `network/${ENV}.tfstate` no S3. | Valida a dependência de infraestrutura: o RDS necessita das sub-redes criadas pelo repositório `infra-network`. |
 | **5. Setup Terraform** | Instala a versão pinada `1.8.5` do binário Terraform. | Garante paridade determinística e imutabilidade entre as execuções. |
 | **6. Terraform Format Check** | Valida a formatação sintática dos arquivos `.tf`. | Mantém a legibilidade e o padrão canônico do código de infraestrutura. |
@@ -261,7 +261,7 @@ Para que a pipeline de CI/CD execute o provisionamento da instância gerenciada 
 | Variável / Parâmetro | Origem / Localização | Valor Padrão | Descrição |
 | :--- | :--- | :--- | :--- |
 | `AWS_REGION` | Pipeline `env` / Terraform | `us-east-1` | Região da AWS para deploy do RDS PostgreSQL. |
-| `S3_TFSTATE_BUCKET` | Backend S3 / Workflow | `fiap-repairshop2` | Bucket S3 para armazenamento do estado `rds/${ENV}.tfstate`. |
+| `S3_TFSTATE_BUCKET` | Backend S3 / Workflow | `fiap-repairshop-{ACCOUNT_ID}` | Bucket S3 para armazenamento do estado `rds/${ENV}.tfstate`. |
 | `DB_NAME` | `environments/*.tfvars` | `repairshop` | Nome da base de dados relacional criada na instância. |
 | `INSTANCE_CLASS` | `environments/*.tfvars` | `db.t3.micro` | Classe computacional da instância gerenciada RDS. |
 
@@ -304,7 +304,7 @@ cd infra
 
 # 2. Inicialize o backend remoto S3
 terraform init \
-  -backend-config="bucket=fiap-repairshop2" \
+  -backend-config="bucket=fiap-repairshop-{ACCOUNT_ID}" \
   -backend-config="key=rds/dev.tfstate" \
   -backend-config="region=us-east-1"
 
